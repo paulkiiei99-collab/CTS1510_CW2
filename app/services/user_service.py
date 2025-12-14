@@ -1,24 +1,32 @@
+"""User authentication and management service."""
 import os
 import bcrypt
-from app.data.db import connect_database
+from pathlib import Path
+from app.data.db import DatabaseManager
 
 BCRYPT_ROUNDS = 12
-USERS_FILE = "users.txt"   # same file your auth.py uses
+USERS_FILE = Path("users.txt")
 
-def hash_password(plain_password: str) -> str:
+
+def hash_password(plain_password):
+    """Hash a plaintext password using bcrypt."""
     password_bytes = plain_password.encode("utf-8")
     salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
     hashed = bcrypt.hashpw(password_bytes, salt)
     return hashed.decode("utf-8")
 
-def verify_password(plain_password: str, stored_hash: str) -> bool:
+
+def verify_password(plain_password, stored_hash):
+    """Check a plaintext password against a stored bcrypt hash."""
     try:
         return bcrypt.checkpw(
             plain_password.encode("utf-8"),
             stored_hash.encode("utf-8")
         )
-    except ValueError:
+    except (ValueError, AttributeError):
         return False
+
+
 def register_user(username, password, role="user"):
     """
     Register a new user into the SQLite DB.
@@ -30,60 +38,59 @@ def register_user(username, password, role="user"):
     if len(password) < 8:
         return False, "Password too short (min 8 characters)."
 
-    conn = connect_database()
-    cur = conn.cursor()
+    with DatabaseManager() as db:
+        db.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+        if db.fetchone():
+            return False, "Username already exists."
 
-    cur.execute("SELECT 1 FROM users WHERE username = ?", (username,))
-    if cur.fetchone():
-        conn.close()
-        return False, "Username already exists."
+        hashed = hash_password(password)
+        db.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (username, hashed, role)
+        )
+        db.commit()
 
-    hashed = hash_password(password)
-
-    cur.execute(
-        "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-        (username, hashed, role)
-    )
-    conn.commit()
-    conn.close()
     return True, "User registered successfully."
 
 
 def login_user(username, password):
     """
     Check username and password against the SQLite DB.
-    Returns (success: bool, message: str)
+    Returns (success: bool, user_dict/message: str)
     """
-    conn = connect_database()
-    cur = conn.cursor()
-
-    cur.execute(
-        "SELECT password, role FROM users WHERE username = ?",
-        (username,)
-    )
-    row = cur.fetchone()
-    conn.close()
+    with DatabaseManager() as db:
+        db.execute(
+            "SELECT id, username, password_hash, role FROM users WHERE username = ?",
+            (username,)
+        )
+        row = db.fetchone()
 
     if not row:
         return False, "User not found."
 
-    stored_hash, role = row
+    # row is a sqlite3.Row object, access by column name
+    user_id = row['id']
+    stored_hash = row['password_hash']
+    role = row['role']
 
     if verify_password(password, stored_hash):
-        return True, "Login successful."
+        # Return user dict on success
+        return True, {
+            'id': user_id,
+            'username': username,
+            'role': role
+        }
     else:
         return False, "Incorrect password."
 
+
 def migrate_users_from_file():
     """
-    Read users from users.txt (username,hash) and insert into SQLite users table.
+    Read users from users.txt (username,hash,role) and insert into SQLite users table.
     Returns number of inserted users.
     """
-    if not os.path.exists(USERS_FILE):
+    if not USERS_FILE.exists():
         return 0
-
-    conn = connect_database()
-    cur = conn.cursor()
 
     inserted = 0
     with open(USERS_FILE, "r", encoding="utf-8") as f:
@@ -92,23 +99,28 @@ def migrate_users_from_file():
             if not line:
                 continue
             try:
-                username, stored_hash = line.split(",", 1)
+                parts = line.split(",")
+                if len(parts) == 3:
+                    username, stored_hash, role = parts
+                elif len(parts) == 2:
+                    username, stored_hash = parts
+                    role = "user"
+                else:
+                    continue
             except ValueError:
                 continue
 
-            # skip if exists
-            cur.execute("SELECT 1 FROM users WHERE username = ?", (username,))
-            if cur.fetchone():
-                continue
+            with DatabaseManager() as db:
+                # Skip if exists
+                db.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+                if db.fetchone():
+                    continue
 
-            role = "user"
-            cur.execute(
-                "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-                (username, stored_hash, role)
-            )
-            inserted += 1
+                db.execute(
+                    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                    (username, stored_hash, role)
+                )
+                db.commit()
+                inserted += 1
 
-    conn.commit()
-    conn.close()
     return inserted
-
