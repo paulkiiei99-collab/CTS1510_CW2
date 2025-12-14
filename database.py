@@ -1,113 +1,134 @@
-from pathlib import Path
-import pandas as pd
+# app/database.py
 
-from app.data.db import connect_database
-from app.data.schema import create_all_tables
+import sqlite3
+import os
 
-from app.services.user_service import (
-    register_user,
-    login_user,
-    migrate_users_from_file,
-)
-
-from app.data.incidents import insert_incident, get_all_incidents
-from app.data.datasets import insert_dataset, get_all_datasets
-from app.data.tickets import insert_ticket, get_all_tickets
+# ------------------------------------
+# Database file path (inside /app/data/)
+# ------------------------------------
+BASE_DIR = os.path.dirname(__file__)          # .../app
+DB_FILE = os.path.join(BASE_DIR, "data", "mdx_intel.db")
 
 
-def load_csv_to_table(conn, csv_file, table):
-    """Read a CSV file and append its contents to a database table."""
-    if not csv_file.exists():
-        print(f"[INFO] File missing -> {csv_file}")
-        return 0
+class DatabaseManager:
+    """
+    Simple helper class to manage one SQLite database for:
+    - users
+    - cyber_incidents
+    - datasets_metadata
+    - it_tickets
+    """
 
-    df = pd.read_csv(csv_file)
-    df.to_sql(table, conn, if_exists="append", index=False)
-    print(f"[DATA] {len(df)} entries inserted into '{table}'")
-    return len(df)
+    def __init__(self, db_path=DB_FILE):
+        self.db_path = db_path
+        # Ensure all tables exist as soon as the manager is created
+        self.create_all_tables()
 
+    # -----------------------------
+    # Internal connection helper
+    # -----------------------------
+    def _connect(self):
+        return sqlite3.connect(self.db_path)
 
-def setup_database_complete():
-    print("\n=== INITIALIZING FULL DATABASE SETUP ===")
+    # -----------------------------
+    # Schema (CREATE TABLE)
+    # -----------------------------
+    def create_all_tables(self):
+        conn = self._connect()
+        cur = conn.cursor()
 
-    db = connect_database()
-    print("Database connection established.")
+        # --- Users table (Week 7 migration target) ---
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL
+            )
+        """)
 
-    create_all_tables(db)
-    print("All required tables have been created.")
+        # --- Cyber Incidents (matches your CYBER_INCIDENTS.db schema) ---
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS cyber_incidents (
+                incident_id INTEGER PRIMARY KEY,
+                timestamp TEXT,
+                severity TEXT,
+                category TEXT,
+                status TEXT,
+                description TEXT
+            )
+        """)
 
-    migrated_count = migrate_users_from_file()
-    print(f"{migrated_count} user records imported from text file.")
+        # --- Dataset Metadata (matches datasets_metadata.csv) ---
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS datasets_metadata (
+                dataset_id INTEGER PRIMARY KEY,
+                name TEXT,
+                rows INTEGER,
+                columns INTEGER,
+                uploaded_by TEXT,
+                upload_date TEXT
+            )
+        """)
 
-    source_folder = Path("DATA")
-    csv_map = {
-        "cyber_incidents": source_folder / "cyber_incidents.csv",
-        "datasets_metadata": source_folder / "datasets_metadata.csv",
-        "it_tickets": source_folder / "it_tickets.csv",
-    }
+        # --- IT Tickets (matches it_tickets.csv columns you use) ---
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS it_tickets (
+                ticket_id INTEGER PRIMARY KEY,
+                created_date TEXT,
+                status TEXT,
+                priority TEXT,
+                assigned_to TEXT,
+                resolution_time_hours REAL
+            )
+        """)
 
-    total = 0
-    for tbl, file in csv_map.items():
-        total += load_csv_to_table(db, file, tbl)
+        conn.commit()
+        conn.close()
 
-    print(f"Imported a total of {total} rows from all CSV files.")
+    # -----------------------------
+    # Generic helper methods
+    # -----------------------------
+    def execute(self, query, params=None):
+        """
+        Run INSERT / UPDATE / DELETE.
+        """
+        if params is None:
+            params = ()
 
-    cur = db.cursor()
-    print("\n--- TABLE COUNT REPORT ---")
-    for tbl in ["users", "cyber_incidents", "datasets_metadata", "it_tickets"]:
-        cur.execute(f"SELECT COUNT(*) FROM {tbl}")
-        count = cur.fetchone()[0]
-        print(f"Table '{tbl}': {count} rows")
+        conn = self._connect()
+        cur = conn.cursor()
+        cur.execute(query, params)
+        conn.commit()
+        conn.close()
 
-    db.close()
-    print("=== DATABASE SETUP COMPLETED ===\n")
+    def fetch_all(self, query, params=None):
+        """
+        Run a SELECT and return all rows.
+        """
+        if params is None:
+            params = ()
 
+        conn = self._connect()
+        cur = conn.cursor()
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        conn.close()
+        return rows
 
-def run_comprehensive_tests():
-    print("\n===== STARTING SYSTEM VERIFICATION TESTS =====")
+    # -----------------------------
+    # Example: simple CRUD wrappers
+    # (You can call these from other files if you want)
+    # -----------------------------
+    def create_user(self, username, password_hash, role):
+        self.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (username, password_hash, role),
+        )
 
-    created, reg_msg = register_user("test_user", "TestPass123!", "user")
-    print("[USER SIGNUP]", reg_msg)
-
-    logged, login_msg = login_user("test_user", "TestPass123!")
-    print("[USER LOGIN]", login_msg)
-
-    _ = connect_database()  # keeps behavior identical to original
-    print("\nCreating a sample incident for validation...")
-
-    new_id = insert_incident(
-        "2024-11-05",
-        "Test Incident",
-        "Low",
-        "Open",
-        "This is only a validation entry.",
-        "test_user",
-    )
-    print(f"Sample incident created with ID: {new_id}")
-
-
-def main():
-    print("======================================")
-    print("        WEEK 8 — DB DEMO MODULE       ")
-    print("======================================")
-
-    setup_database_complete()
-    run_comprehensive_tests()
-
-    print("\n=== ADDING STANDARD INCIDENT EXAMPLE ===")
-    new_incident = insert_incident(
-        "2024-11-10",
-        "Phishing Attempt",
-        "High",
-        "Open",
-        "User interacted with a suspicious hyperlink.",
-        "alice",
-    )
-    print("Incident successfully saved with ID:", new_incident)
-
-    print("\n=== DISPLAYING ALL INCIDENT RECORDS ===")
-    print(get_all_incidents())
-
-
-if __name__ == "__main__":
-    main()
+    def get_user_by_username(self, username):
+        rows = self.fetch_all(
+            "SELECT id, username, password_hash, role FROM users WHERE username = ?",
+            (username,),
+        )
+        return rows[0] if rows else None
