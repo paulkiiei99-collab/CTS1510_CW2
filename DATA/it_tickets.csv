@@ -1,10 +1,4 @@
-# ========================================
-# IT TICKETS - EXACT DATA FROM COURSEWORK
-# ========================================
-print("\n🎫 Creating it_tickets.csv with exact data...")
-
-# Your exact data as provided
-tickets_data = """ticket_id,priority,description,status,assigned_to,created_at,resolution_time_hours
+ticket_id,priority,description,status,assigned_to,created_at,resolution_time_hours
 2000,High,Ticket 0 problem description,Resolved,IT_Support_A,1/27/2024 5:00,24
 2001,Medium,Ticket 1 problem description,Resolved,IT_Support_C,8/6/2024 7:00,37
 2002,High,Ticket 2 problem description,Open,IT_Support_C,4/7/2024 11:00,40
@@ -154,28 +148,4 @@ tickets_data = """ticket_id,priority,description,status,assigned_to,created_at,r
 2146,High,Ticket 146 problem description,Resolved,IT_Support_B,8/11/2024 12:00,25
 2147,Medium,Ticket 147 problem description,Resolved,IT_Support_C,2/15/2024 16:00,74
 2148,High,Ticket 148 problem description,Open,IT_Support_A,8/20/2024 16:00,38
-2149,Medium,Ticket 149 problem description,Resolved,IT_Support_A,8/10/2024 1:00,41"""
-
-# Write to file
-with open("DATA/it_tickets.csv", "w", encoding="utf-8") as f:
-    f.write(tickets_data)
-
-print(f"✓ Saved it_tickets.csv with 150 tickets (IDs 2000-2149)")
-
-print("\n" + "=" * 70)
-print("  ✅ Exact Coursework Data Saved!")
-print("=" * 70)
-print("\n📋 File Details:")
-print("  • it_tickets.csv - 150 records (ticket_id 2000-2149)")
-print("  • Columns: ticket_id, priority, description, status,")
-print("            assigned_to, created_at, resolution_time_hours")
-print("\n🎯 Key for Analysis:")
-print("  • Status 'Waiting for User' = Process bottleneck")
-print("  • resolution_time_hours = Performance metric")
-print("  • assigned_to (A/B/C) = Staff performance comparison")
-print("\nNext steps:")
-print("  1. Update your schema to match these column names")
-print("  2. Delete old database: rm main.db")
-print("  3. Run: python database.py")
-print("  4. Run: streamlit run app.py")
-print("=" * 70)
+2149,Medium,Ticket 149 problem description,Resolved,IT_Support_A,8/10/2024 1:00,41

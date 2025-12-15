@@ -131,15 +131,19 @@ def register_page():
                     if success:
                         st.success(message)
                         st.info("Please login with your new credentials.")
-                        if st.button("Go to Login"):
-                            st.session_state.show_register = False
-                            st.rerun()
+                        # ❌ removed st.button from inside form
                     else:
                         st.error(message)
+
+        # ✅ buttons must be OUTSIDE the form
+        if st.button("Go to Login", use_container_width=True):
+            st.session_state.show_register = False
+            st.rerun()
 
         if st.button("Back to Login", use_container_width=True):
             st.session_state.show_register = False
             st.rerun()
+
 
 
 # Dashboard Pages

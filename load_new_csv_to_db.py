@@ -1,4 +1,5 @@
 import pandas as pd
+import sqlite3
 from pathlib import Path
 from app.data.db import DatabaseManager
 
@@ -12,21 +13,32 @@ TICKETS_CSV = DATA_DIR / "it_tickets.csv"
 
 def load_cyber():
     df = pd.read_csv(CYBER_CSV)
+    db = DatabaseManager()
+    conn = db.get_connection()
+    cursor = conn.cursor()
 
-    with DatabaseManager() as db:
-        for _, r in df.iterrows():
-            db.execute("""
-                INSERT INTO cyber_incidents (date, title, severity, status, description, reported_by)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                str(r["date"]),
-                str(r["title"]),
+    for _, r in df.iterrows():
+        cursor.execute(
+            """
+            INSERT INTO cyber_incidents
+            (title, category, severity, status, description, created_at, assigned_to)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"Incident {r['incident_id']}",  # title
+                str(r["category"]),
                 str(r["severity"]),
                 str(r["status"]),
                 str(r["description"]),
-                str(r.get("reported_by", "pierre")),
-            ))
-        db.commit()
+                str(r["timestamp"]),
+                "System",
+            ),
+        )
+
+    conn.commit()
+    conn.close()
+    print("✓ Loaded cyber incidents")
+
 
 
 def load_datasets():
